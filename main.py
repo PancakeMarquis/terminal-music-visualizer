@@ -17,11 +17,12 @@ def main():
         
         while is_running:
             chunk = get_next_chunk(audio)
+            if chunk == None:
+                break
             bars = analyze_chunk(chunk)
             run_visualizer(bars)
 
-            if audio.getnframes() == audio.tell():
-                break
+            
             
 
     except KeyboardInterrupt:
