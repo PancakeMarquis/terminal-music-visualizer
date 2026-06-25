@@ -1,4 +1,3 @@
-import random
 import os
 from time import sleep
 import wave
@@ -10,20 +9,21 @@ def main():
     
    
     file = get_audio_file()
-    print(f"Playing {file}")
+    
 
-    audio = load_audio(file)
+    audio, sample_rate = load_audio(file)
     try:
         
         while is_running:
             chunk = get_next_chunk(audio)
-            if chunk == None:
+            if chunk is None:
                 break
-            bars = analyze_chunk(chunk)
+            bars = analyze_chunk(chunk, sample_rate)
+
             run_visualizer(bars)
 
-            
-            
+        audio.close()
+        
 
     except KeyboardInterrupt:
         print(f"Stopped playing {file}")
@@ -34,12 +34,12 @@ def get_audio_file() -> str:
 
 def load_audio(file: str):
     audio = wave.open(file)
-    return audio
+    sample_rate = audio.getframerate()
+    return audio, sample_rate
     
 
 def get_next_chunk(audio):
     frames = audio.readframes(1024)
-
     if len(frames) == 0:
         return None
     
@@ -48,16 +48,37 @@ def get_next_chunk(audio):
     return samples
 
 
-def analyze_chunk(chunk):
+def analyze_chunk(chunk, sample_rate):
     if chunk is None:
         return None
-    amplitude = np.mean(np.abs(chunk))
+    
+    chunk = chunk.astype(np.float32)
+    chunk -= np.mean(chunk)
 
-    bars = int(amplitude / 32767 * 20)
+    spectrum = np.abs(np.fft.rfft(chunk))
+    freqs = np.fft.rfftfreq(len(chunk), d=1/sample_rate)
+
+    bands = [
+        (20, 250),
+        (250, 1000),
+        (1000, 4000),
+        (4000, 20000)
+    ]
+
+    bars = []
+    for low, high in bands:
+            mask = (freqs >= low) & (freqs < high)
+
+            if np.any(mask):
+                magnitude = np.mean(spectrum[mask])
+            else:
+                magnitude = 0
+
+            bars.append(min(int(np.log10(magnitude + 1) * 3), 20))
 
     return bars
 
-def play_audio(file_data):
+def play_audio(file):
     pass
 
 def run_visualizer(bars):
@@ -67,11 +88,10 @@ def run_visualizer(bars):
     
     
 
-def draw_bars(bars: int):
-    bar = ""
-    for num in range(bars):
-        bar += "#"
-    print(bar)
+def draw_bars(bars):
+    labels = ["Bass", "Low", "Mid", "High"]
+    for label, height in zip(labels, bars):
+        print(f"{label:5}{'#' * height}")
 
 
 if __name__ == "__main__":
