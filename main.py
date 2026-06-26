@@ -2,25 +2,43 @@ import os
 from time import sleep
 import wave
 import numpy as np
-
+from playsound3 import playsound
+from time import perf_counter
 
 def main():
     is_running: bool = True
     
    
     file = get_audio_file()
-    
+    play_audio(file)
+    sleep(.8)
 
     audio, sample_rate = load_audio(file)
+
+    chunk_size = 1024
+    chunk_duration = chunk_size / sample_rate
+
+    start_time = perf_counter()
+    chunk_index = 0
+
     try:
         
         while is_running:
-            chunk = get_next_chunk(audio)
+            chunk = get_next_chunk(audio, chunk_size)
             if chunk is None:
                 break
+
             bars = analyze_chunk(chunk, sample_rate)
 
             run_visualizer(bars)
+
+            chunk_index += 1
+
+            target_time = chunk_index * chunk_duration
+            elapsed = perf_counter() - start_time
+
+            if target_time > elapsed:
+                sleep(target_time - elapsed)
 
         audio.close()
         
@@ -38,8 +56,8 @@ def load_audio(file: str):
     return audio, sample_rate
     
 
-def get_next_chunk(audio):
-    frames = audio.readframes(1024)
+def get_next_chunk(audio, chunk_size):
+    frames = audio.readframes(chunk_size)
     if len(frames) == 0:
         return None
     
@@ -79,12 +97,12 @@ def analyze_chunk(chunk, sample_rate):
     return bars
 
 def play_audio(file):
-    pass
+    playsound(file, False)
 
 def run_visualizer(bars):
     os.system("clear")
     draw_bars(bars)
-    sleep(.023)
+    
     
     
 
