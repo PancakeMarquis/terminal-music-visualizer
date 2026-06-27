@@ -1,80 +1,88 @@
 import os
 from time import sleep
-import wave
 import numpy as np
-from playsound3 import playsound
-from time import perf_counter
+import soundfile as sf
+import pygame
 
 def main():
-    is_running: bool = True
-    
-   
+    pygame.init()
     file = get_audio_file()
-    play_audio(file)
-    sleep(.8)
+    
 
     audio, sample_rate = load_audio(file)
+    pygame.mixer.init(frequency= sample_rate)
+
+    play_audio(file)
 
     chunk_size = 1024
-    chunk_duration = chunk_size / sample_rate
+    last_chunk = -1
 
-    start_time = perf_counter()
-    chunk_index = 0
+    chunk_duration = chunk_size / sample_rate
 
     try:
         
-        while is_running:
-            chunk = get_next_chunk(audio, chunk_size)
-            if chunk is None:
+        while pygame.mixer.music.get_busy():
+            position_ms = pygame.mixer.music.get_pos()
+
+            if position_ms < 0:
+                continue
+
+            elapsed = position_ms / 1000.0
+
+            chunk_index = int(elapsed * sample_rate / chunk_size)
+
+            if chunk_index == last_chunk:
+                sleep(.005)
+                continue
+
+            last_chunk = chunk_index
+
+            start = chunk_index * chunk_size
+            end = start + chunk_size
+
+            if start >= len(audio):
                 break
+
+            chunk = audio[start:end]
+
+            if chunk.ndim == 2:
+                chunk = chunk.mean(axis=1)
 
             bars = analyze_chunk(chunk, sample_rate)
 
             run_visualizer(bars)
-
-            chunk_index += 1
-
-            target_time = chunk_index * chunk_duration
-            elapsed = perf_counter() - start_time
-
-            if target_time > elapsed:
-                sleep(target_time - elapsed)
-
-        audio.close()
-        
-
     except KeyboardInterrupt:
         print(f"Stopped playing {file}")
+    finally:
+        pygame.mixer.music.stop()
+        pygame.quit()
+
     
 def get_audio_file() -> str:
     file: str = input("Choose an audio file: ")
     return file
 
 def load_audio(file: str):
-    audio = wave.open(file)
-    sample_rate = audio.getframerate()
+    audio, sample_rate = sf.read(file, dtype="float32")
     return audio, sample_rate
     
-
-def get_next_chunk(audio, chunk_size):
-    frames = audio.readframes(chunk_size)
-    if len(frames) == 0:
-        return None
-    
-    samples = np.frombuffer(frames, dtype=np.int16)
-
-    return samples
-
 
 def analyze_chunk(chunk, sample_rate):
     if chunk is None:
         return None
-    
-    chunk = chunk.astype(np.float32)
+    chunk = chunk.copy()
     chunk -= np.mean(chunk)
+
+    window = np.hanning(len(chunk))
+    chunk *= window
 
     spectrum = np.abs(np.fft.rfft(chunk))
     freqs = np.fft.rfftfreq(len(chunk), d=1/sample_rate)
+
+    max_mag = np.max(spectrum)
+
+    if max_mag > 0:
+        spectrum /= max_mag
 
     bands = [
         (20, 250),
@@ -87,25 +95,26 @@ def analyze_chunk(chunk, sample_rate):
     for low, high in bands:
             mask = (freqs >= low) & (freqs < high)
 
-            if np.any(mask):
-                magnitude = np.mean(spectrum[mask])
+            band = spectrum[mask]
+
+            if len(band):
+                magnitude = np.sqrt(np.mean(band ** 2))
             else:
                 magnitude = 0
 
-            bars.append(min(int(np.log10(magnitude + 1) * 3), 20))
+            bars.append(min(int((magnitude ** 0.5) * 20), 20))
 
     return bars
 
 def play_audio(file):
-    playsound(file, False)
+    pygame.mixer.music.load(file)
+    pygame.mixer.music.play()
 
 def run_visualizer(bars):
     os.system("clear")
     draw_bars(bars)
     
     
-    
-
 def draw_bars(bars):
     labels = ["Bass", "Low", "Mid", "High"]
     for label, height in zip(labels, bars):
