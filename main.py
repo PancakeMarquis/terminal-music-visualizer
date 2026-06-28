@@ -3,6 +3,7 @@ from time import sleep
 import numpy as np
 import soundfile as sf
 import pygame
+from colorama import Fore, Back, Style
 
 def main():
     pygame.init()
@@ -111,14 +112,16 @@ def play_audio(file):
     pygame.mixer.music.play()
 
 def run_visualizer(bars):
-    os.system("clear")
+    print("\033[2J\033[H", end="")
     draw_bars(bars)
     
     
 def draw_bars(bars):
     labels = ["Bass", "Low", "Mid", "High"]
-    for label, height in zip(labels, bars):
-        print(f"{label:5}{'#' * height}")
+    colors = [Fore.RED, Fore.YELLOW, Fore.GREEN, Fore.CYAN]
+
+    for label, height, color in zip(labels, bars, colors):
+        print(f"{label:5}{color}{'█' * height}")
 
 
 if __name__ == "__main__":
