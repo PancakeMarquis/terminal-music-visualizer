@@ -3,7 +3,7 @@ from time import sleep
 import numpy as np
 import soundfile as sf
 import pygame
-from colorama import Fore, Back, Style
+from colorama import Fore
 
 def main():
     pygame.init()
@@ -17,8 +17,6 @@ def main():
 
     chunk_size = 1024
     last_chunk = -1
-
-    chunk_duration = chunk_size / sample_rate
 
     try:
         
@@ -85,15 +83,11 @@ def analyze_chunk(chunk, sample_rate):
     if max_mag > 0:
         spectrum /= max_mag
 
-    bands = [
-        (20, 250),
-        (250, 1000),
-        (1000, 4000),
-        (4000, 20000)
-    ]
+    num_bars = 16
+    bands = np.logspace(np.log10(20), np.log10(20000), num_bars + 1)
 
     bars = []
-    for low, high in bands:
+    for low, high in zip(bands[:-1], bands[1:]):
             mask = (freqs >= low) & (freqs < high)
 
             band = spectrum[mask]
@@ -117,11 +111,18 @@ def run_visualizer(bars):
     
     
 def draw_bars(bars):
-    labels = ["Bass", "Low", "Mid", "High"]
     colors = [Fore.RED, Fore.YELLOW, Fore.GREEN, Fore.CYAN]
+    max_height = 20
 
-    for label, height, color in zip(labels, bars, colors):
-        print(f"{label:5}{color}{'█' * height}")
+    for row in range(max_height, 0, -1):
+        for i, height in enumerate(bars):
+            color = colors[i % len(colors)]
+            if height >= row:
+                print(f"{color}█ ", end="")
+            else:
+                print("  ", end="")
+        print()
+    print("─" * (len(bars) * 2))
 
 
 if __name__ == "__main__":
