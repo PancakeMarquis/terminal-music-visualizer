@@ -8,9 +8,18 @@ import sys
 
 PEAK_HOLD_FRAMES = 20
 PEAK_FALL_SPEED = 0.1
-SMOOTHING_FACTOR = .3
+SMOOTHING_FACTOR = 0.3
 CHUNK_SIZE = 1024
-UI_RESERVED_LINES = 5
+
+MIN_FREQUENCY = 20
+MAX_FREQUENCY = 20000
+
+PROGRESS_CHAR = "█"
+EMPTY_CHAR = "░"
+PEAK_CHAR = "▲"
+BAR_CHAR = "█"
+
+UI_RESERVED_LINES = 6
 UI_RESERVED_COLUMN = 2
 WAIT_TO_SKIP = .005
 
@@ -20,6 +29,8 @@ def main():
     
 
     audio, sample_rate = load_audio(audio_file)
+    
+    total_duration = len(audio) / sample_rate
     
 
     pygame.mixer.init(frequency= sample_rate)
@@ -55,6 +66,8 @@ def main():
                 continue
 
             elapsed = position_ms / 1000.0
+            progress = min(elapsed / total_duration, 1.0)
+            elapsed = min(elapsed, total_duration)
 
             chunk_index = int(elapsed * sample_rate / CHUNK_SIZE)
 
@@ -88,12 +101,13 @@ def main():
                     else:
                         peak_height[i] -= PEAK_FALL_SPEED
                         peak_height[i] = max(peak_height[i], display_height[i])
-            run_visualizer(display_height, peak_height, audio_file, max_height)
+            run_visualizer(display_height, peak_height, audio_file, max_height, progress, elapsed, total_duration)
     except KeyboardInterrupt:
         print(f"Stopped playing {audio_file}")
     finally:
         pygame.mixer.music.stop()
         pygame.quit()
+        print(f"Playback finished.")
 
     
 def get_audio_file():
@@ -130,7 +144,7 @@ def analyze_chunk(chunk, sample_rate, num_bands, max_height):
     if max_mag > 0:
         spectrum /= max_mag
 
-    bands = np.logspace(np.log10(20), np.log10(20000), num_bands + 1)
+    bands = np.logspace(np.log10(MIN_FREQUENCY), np.log10(MAX_FREQUENCY), num_bands + 1)
 
     bars = []
     for low, high in zip(bands[:-1], bands[1:]):
@@ -138,7 +152,7 @@ def analyze_chunk(chunk, sample_rate, num_bands, max_height):
 
             band = spectrum[mask]
 
-            if len(band):
+            if band.size > 0:
                 magnitude = np.sqrt(np.mean(band ** 2))
             else:
                 magnitude = 0
@@ -151,14 +165,14 @@ def play_audio(file):
     pygame.mixer.music.load(file)
     pygame.mixer.music.play()
 
-def run_visualizer(bars, peak_height, audio_file_name, max_height):
+def run_visualizer(bars, peak_height, audio_file_name, max_height, progress, elapsed, total_duration):
     sys.stdout.write("\033[H")   # Home
     sys.stdout.write("\033[J")   # Clear to end
-    draw_bars(bars, peak_height, audio_file_name, max_height)
+    draw_bars(bars, peak_height, audio_file_name, max_height,progress, elapsed, total_duration)
     sys.stdout.flush()
     
     
-def draw_bars(bars, peak_height, audio_file_name, max_height):
+def draw_bars(bars, peak_height, audio_file_name, max_height, progress, elapsed, total_duration):
     colors = [Fore.RED, Fore.YELLOW, Fore.GREEN, Fore.CYAN]
 
 
@@ -166,15 +180,40 @@ def draw_bars(bars, peak_height, audio_file_name, max_height):
         for i, height in enumerate(bars):
             color = colors[i % len(colors)]
             if height >= row:
-                print(f"{color}█ ", end="")
+                print(f"{color}{BAR_CHAR} ", end="")
             elif row == round(peak_height[i]):
-                print(f"{color}▲ ", end="")
+                print(f"{color}{PEAK_CHAR} ", end="")
             else:
                 print("  ", end="")
         print()
     print("─" * (len(bars) * 2))
-    print(f"Now Playing: {audio_file_name}")
+    base_name = os.path.basename(audio_file_name)
+    print(f"Now Playing: {base_name}")
+    
+    terminal_width = os.get_terminal_size().columns
 
+    ui_width = terminal_width - UI_RESERVED_COLUMN
+
+    time_text = f"{format_time(elapsed)} / {format_time(total_duration)}"
+    percent_text = f"{round(progress * 100):3d}%"
+
+    fixed_width = len(time_text) + len(percent_text) + 5
+
+    bar_width = max(10, ui_width - fixed_width - 2)
+
+    filled = int(progress * bar_width)
+
+    progress_bar = (
+        f"{PROGRESS_CHAR}" * filled +
+        f"{EMPTY_CHAR}" * (bar_width - filled)
+    )
+
+    print(f"{time_text} [{progress_bar}] {percent_text}")
+
+def format_time(seconds):
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    return f"{minutes}:{seconds:02}"
 
 if __name__ == "__main__":
     main()
